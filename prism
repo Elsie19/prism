@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# cursors go in .icons because of cursor.theme
+# icons go in .icons because index.theme
+# gtk go in .themes because of index.theme
+function help() {
+  echo "-I <url/localfile>"
+}
+
+function download_file() {
+  unset DOWNLOAD_FILE_NAME
+  local filename && filename="$(basename "$FILE")"
+  wget -N "$@" -q --show-progress || {
+    rm -f "$@"
+    echo "Could not download file"
+    exit 1
+  }
+  export DOWNLOAD_FILE_NAME="$filename"
+}
+
+function guard() {
+  case "${DOWNLOAD_FILE_NAME##*.}" in
+    tar.gz)
+      if grep -vFf cursor.theme <(tar -tvf "$DOWNLOAD_FILE_NAME" | awk '{ print $6 }') &>/dev/null; then
+        export CURSOR_OR_ELSE=icons
+      # if it doesn't contain cursor.theme but does contain assets folder, it's an icon set, so put it in .icons
+      elif grep -vFf assets <(tar -tvf "$DOWNLOAD_FILE_NAME" | awk '{ print $6}') &>/dev/null; then
+        export CURSOR_OR_ELSE=icons
+      else
+      # it's a gtk theme
+        export CURSOR_OR_ELSE=themes
+      fi
+      export EXTRACT_CMD="tar --overwrite -xzf ${DOWNLOAD_FILE_NAME} -C $HOME/.${CURSOR_OR_ELSE}"
+      ;;
+    zip)
+      # if we get cursor.theme, it means it's a cursor file and to put it in .icons
+      if grep -vFf cursor.theme <(unzip -l "$DOWNLOAD_FILE_NAME" | awk '{ print $4 }') &>/dev/null; then
+        export CURSOR_OR_ELSE=icons
+      # if it doesn't contain cursor.theme but does contain assets folder, it's an icon set, so put it in .icons
+      elif grep -vFf assets <(unzip -l "$DOWNLOAD_FILE_NAME" | awk '{ print $4}') &>/dev/null; then
+        export CURSOR_OR_ELSE=icons
+      else
+      # it's a gtk theme
+        export CURSOR_OR_ELSE=themes
+      fi
+      export EXTRACT_CMD="unzip -q -o ${DOWNLOAD_FILE_NAME} -d $HOME/.${CURSOR_OR_ELSE:?}"
+      ;;
+    tar.xz)
+      if grep -vFf cursor.theme <(tar -tvf "$DOWNLOAD_FILE_NAME" | awk '{ print $6 }') &>/dev/null; then
+        export CURSOR_OR_ELSE=icons
+      # if it doesn't contain cursor.theme but does contain assets folder, it's an icon set, so put it in .icons
+      elif grep -vFf assets <(tar -tvf "$DOWNLOAD_FILE_NAME" | awk '{ print $6}') &>/dev/null; then
+        export CURSOR_OR_ELSE=icons
+      else
+      # it's a gtk theme
+        export CURSOR_OR_ELSE=themes
+      fi
+      export EXTRACT_CMD="tar --overwrite -xf ${DOWNLOAD_FILE_NAME} -C $HOME/.${CURSOR_OR_ELSE}"
+      ;;
+    *)
+      echo "Could not find valid extracter"
+      exit 1
+      ;;
+  esac
+}
+
+# If INPUT is a URL, download it and export DOWNLOAD_FILE_NAME. Same thing for locally without downloading. The final variable regardless of method should be DOWNLOAD_FILE_NAME
+INPUT="$1"
+case "${INPUT}" in
+  -I)
+    shift
+    FILE="$1"
+    if [[ "$FILE" = http* ]]; then
+      download_file "$FILE"
+      mkdir -p "$HOME"/.{themes,icons}
+      guard "$DOWNLOAD_FILE_NAME"
+      echo -e "\t==> $EXTRACT_CMD"
+      eval "$EXTRACT_CMD"
+      echo "Done"
+      exit
+    else
+      if ! [[ -f "$1" ]]; then
+        echo "$1 not found"
+        exit 1
+      fi
+      export DOWNLOAD_FILE_NAME="$1"
+      guard "$DOWNLOAD_FILE_NAME"
+      echo -e "\t ==> $EXTRACT_CMD"
+      eval "$EXTRACT_CMD"
+      echo "Done"
+      exit
+    fi
+    ;;
+  *)
+    help
+    exit 1
+    ;;
+esac
